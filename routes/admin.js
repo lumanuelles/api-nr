@@ -44,10 +44,8 @@ const validateRegister = [
         .withMessage('Formato de email inválido')
         .normalizeEmail(),
     body('senha')
-        .isLength({ min: 8 })
-        .withMessage('A senha deve ter no mínimo 8 caracteres')
-        .matches(/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/)
-        .withMessage('A senha deve conter letras maiúsculas, minúsculas, números e caracteres especiais')
+        .isLength({ min: 6, max: 50 })
+        .withMessage('A senha deve ter entre 6 e 50 caracteres')
 ];
 
 const validateAdminUpdate = [
@@ -76,7 +74,6 @@ router.post('/produtos', verificarAutenticacao, upload.array('imagens'), validat
     try {
         const imagens = [];
 
-        // ...existing code...
         const files = req.files || [];
         for (const file of files) {
             const buffer = file.buffer;
@@ -242,7 +239,7 @@ router.post('/administradores', verificarAcessoOwner, validateRegister, async (r
         res.status(201).json({ message: 'Administrador criado com sucesso.', admin: rows[0] });
     } catch (error) {
         console.error('Erro ao criar administrador:', error);
-        res.status(500).json({ error: 'Erro ao criar administrador.' });
+        res.status(500).json({ error: 'Erro ao criar administrador. Tente novamente mais tarde.' });
     }
 });
 

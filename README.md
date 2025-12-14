@@ -1,200 +1,161 @@
 ## API - Núbia Rocha
 ### Integrantes: Fernanda Barbosa Rodrigues, Gabriela Martins Matos Gomes, Heloísa Almeida Miranda, Kamila Santiago dos Santos e Luiza Emanuelle Soares Dias.
 
-Este documento explica o funcionamento do back-end da API, suas rotas, autenticação, interação com o banco de dados, uso do Supabase para armazenamento de imagens, e como os arquivos se relacionam.
+Este documento descreve a estrutura e funcionamento da API desenvolvida para gerenciamento de produtos musicais.
 
 ---
 
-### Visão Geral
+## Visão Geral
 
-A API foi desenvolvida em Node.js usando Express, com autenticação JWT, validação de dados, e integração com banco de dados PostgreSQL hospedado na [neon.tech](https://neon.tech). O armazenamento de imagens utiliza o Supabase (CDN), pois o projeto é hospedado na Vercel via Github, e essa foi a solução encontrada para upload e acesso público de arquivos.
+API RESTful desenvolvida com Node.js e Express, utilizando PostgreSQL (Neon.tech) para persistência de dados e Vercel Blob Storage para armazenamento de imagens. A autenticação é implementada via JWT com dois níveis de acesso: administradores comuns e Owner.
+
+**Tecnologias principais:**
+- Node.js + Express
+- PostgreSQL (Neon.tech)
+- JWT (autenticação)
+- Vercel Blob Storage (imagens)
+- Bcrypt (criptografia)
+- Express Validator (validação)
 
 ---
 
-## Estrutura dos Arquivos
+## Estrutura de Arquivos
 
-- **server.js**: Ponto de entrada da aplicação. Carrega variáveis de ambiente, configura middlewares, importa e registra as rotas públicas, administrativas e de autenticação.
-- **lib/db.js**: Configura a conexão com o banco PostgreSQL usando a URL do ambiente.
-- **lib/supabase.js**: Inicializa o cliente Supabase para upload, remoção e obtenção de URLs públicas de imagens.
-- **middlewares/authmw.js**: Implementa autenticação JWT e verificação de acesso do Owner.
-- **routes/public.js**: Rotas públicas para consulta de produtos, instrumentos e professores.
-- **routes/admin.js**: Rotas administrativas para CRUD de produtos, instrumentos e professores. Requer autenticação.
-- **routes/auth.js**: Rotas de login e perfil do administrador.
+### Núcleo da Aplicação
+- **`server.js`**: Inicializa o servidor Express, configura middlewares globais (CORS, JSON, URL-encoded) e registra as rotas.
+
+### Bibliotecas (`lib/`)
+- **`db.js`**: Pool de conexões PostgreSQL configurado via `DATABASE_URL`.
+- **`blob.js`**: Funções para upload e remoção de imagens no Vercel Blob Storage. Exporta `uploadImageBuffer()`, `removeImage()` e `extractPathFromPublicUrl()`.
+
+### Middlewares (`middlewares/`)
+- **`authmw.js`**: Exporta `verificarAutenticacao()` (valida JWT e extrai dados do usuário) e `verificarAcessoOwner()` (restringe acesso apenas ao Owner).
+
+### Rotas (`routes/`)
+- **`public.js`**: Endpoints públicos (sem autenticação) para consulta de produtos.
+- **`auth.js`**: Login e gerenciamento de perfil do administrador.
+- **`admin.js`**: CRUD completo de produtos e administradores (requer autenticação).
 
 ---
 
 ## Banco de Dados
 
-O banco é PostgreSQL, hospedado na neon.tech. As principais tabelas são:
-
-- **administrador**: Usuários administradores (login).
-- **produto**: Produtos cadastrados, com nome, preço e imagens (array de URLs).
-- **instrumento**: Instrumentos musicais.
-- **professor**: Professores cadastrados.
-- **professor_instrumento**: Relação entre professores e instrumentos.
+**Estrutura principal:**
+- **`administrador`**: Credenciais e dados dos administradores (id, username, email, senha_hash).
+- **`produto`**: Catálogo de produtos (id, nome, preco, imagens[], estoque).
 
 ---
 
-## Supabase (CDN de Imagens)
+## Autenticação
 
-O Supabase é usado para upload e armazenamento de imagens dos produtos. O bucket é configurado via variável de ambiente. Após o upload, a URL pública é obtida para ser salva no banco e acessada pelo frontend.
+### Níveis de Acesso
+1. **Público**: Qualquer usuário pode acessar rotas de consulta.
+2. **Administrador**: Acesso via token JWT para operações CRUD.
+3. **Owner**: Administrador especial (definido por `OWNER_ID` e `OWNER_EMAIL`) com permissões exclusivas.
 
----
-
-## Autenticação e Permissões
-
-- **Autenticação JWT**: Usuários administradores fazem login e recebem um token JWT, que deve ser enviado nas rotas protegidas via header `Authorization: Bearer <token>`.
-- **Owner**: Usuário especial identificado por ID e email definidos nas variáveis de ambiente. Apenas o Owner pode acessar certas rotas administrativas.
-- **Rotas públicas**: Não exigem autenticação.
-- **Rotas administrativas**: Exigem autenticação JWT válida.
+### Fluxo de Autenticação
+1. Login com `username` e `senha` retorna token JWT.
+2. Token deve ser enviado no header: `Authorization: Bearer <token>`.
+3. Middleware valida token e injeta dados do usuário em `req.userId`, `req.userEmail`, `req.userType`.
 
 ---
 
 ## Rotas da API
 
-### Rotas Públicas
+### Públicas (`/api`)
 
-#### Listar Produtos
-- **URL**: `https://api-nr.vercel.app/api/produtos`
-- **Método**: GET
-- **Acesso**: Público
-- **Descrição**: Retorna todos os produtos cadastrados, incluindo nome, preço e URLs das imagens.
+#### `GET /produtos`
+Retorna lista de todos os produtos com id, nome, preço, imagens e estoque.
 
-#### Listar Instrumentos
-- **URL**: `https://api-nr.vercel.app/api/instrumentos`
-- **Método**: GET
-- **Acesso**: Público
-- **Descrição**: Retorna todos os instrumentos cadastrados.
-
-#### Listar Professores
-- **URL**: `https://api-nr.vercel.app/api/professores`
-- **Método**: GET
-- **Acesso**: Público
-- **Descrição**: Retorna todos os professores e os instrumentos que cada um leciona.
+#### `GET /produtos/:id`
+Retorna detalhes de um produto específico.
 
 ---
 
-### Rotas de Autenticação
+### Autenticação (`/api/auth`)
 
-#### Login
-- **URL**: `https://api-nr.vercel.app/api/auth/login`
-- **Método**: POST
-- **Acesso**: Público
-- **Body**:
-```json
-{
-	"email": "email@exemplo.com",
-	"senha": "senha"
-}
-```
-- **Descrição**: Retorna um token JWT e o tipo de usuário (admin ou Owner).
+#### `POST /login`
+**Body:** `{ username, senha }`  
+**Retorna:** `{ token, userType }`  
+Autentica administrador e retorna JWT.
 
-#### Perfil do Administrador
-- **URL**: `https://api-nr.vercel.app/api/auth/perfil`
-- **Método**: GET
-- **Acesso**: Autenticado (admin ou Owner)
-- **Header**: `Authorization: Bearer <token>`
-- **Descrição**: Retorna dados do administrador logado.
+#### `GET /perfil`
+**Auth:** Requer token  
+**Retorna:** Dados do administrador logado (id, username, email).
 
-#### Atualizar Perfil
-- **URL**: `https://api-nr.vercel.app/api/auth/perfil`
-- **Método**: PUT
-- **Acesso**: Autenticado
-- **Body**: Pode conter email, novaSenha, senhaAtual
-- **Descrição**: Permite atualizar email ou senha do administrador.
+#### `PUT /perfil`
+**Auth:** Requer token  
+**Body:** `{ username?, email?, novaSenha?, senhaAtual }`  
+Atualiza dados do perfil. Requer `senhaAtual` para alterações.
 
 ---
 
-### Rotas Administrativas (CRUD)
-
-Todas exigem autenticação JWT.
+### Administrativas (`/api/admin`)
 
 #### Produtos
-- **Criar Produto**
-	- **URL**: `https://api-nr.vercel.app/api/admin/produtos`
-	- **Método**: POST
-	- **Acesso**: Autenticado
-	- **Body**: FormData com campos `nome`, `preco` e arquivos `imagens[]`
 
-- **Editar Produto**
-	- **URL**: `https://api-nr.vercel.app/api/admin/produtos/:id`
-	- **Método**: PUT
-	- **Acesso**: Autenticado
-	- **Body**: FormData com campos `nome`, `preco` e arquivos `imagens[]`
+**`POST /produtos`**  
+**Auth:** Administrador  
+**Body:** FormData com `nome`, `preco`, `estoque`, `imagens[]` (arquivos), `imagensToAdd` (base64)  
+Cria novo produto e faz upload das imagens.
 
-- **Excluir Produto**
-	- **URL**: `https://api-nr.vercel.app/api/admin/produtos/:id`
-	- **Método**: DELETE
-	- **Acesso**: Autenticado
+**`PUT /produtos/:id`**  
+**Auth:** Administrador  
+**Body:** FormData com `nome`, `preco`, `estoque`, `imagens[]`, `imagensToAdd`, `imagensToRemove`  
+Atualiza produto, gerencia adição/remoção de imagens.
 
-#### Instrumentos
-- **Criar Instrumento**
-	- **URL**: `https://api-nr.vercel.app/api/admin/instrumentos`
-	- **Método**: POST
-	- **Acesso**: Autenticado
-	- **Body**:
-		```json
-		{
-			"nome": "Violão",
-			"descricao": "Instrumento de cordas..."
-		}
-		```
+**`DELETE /produtos/:id`**  
+**Auth:** Administrador  
+Remove produto e todas as imagens associadas.
 
-- **Editar Instrumento**
-	- **URL**: `https://api-nr.vercel.app/api/admin/instrumentos/:id`
-	- **Método**: PUT
-	- **Acesso**: Autenticado
-	- **Body**: Igual ao POST
+#### Administradores
 
-- **Excluir Instrumento**
-	- **URL**: `https://api-nr.vercel.app/api/admin/instrumentos/:id`
-	- **Método**: DELETE
-	- **Acesso**: Autenticado
+**`POST /administradores`**  
+**Auth:** Owner  
+**Body:** `{ username, email, senha }`  
+Cria novo administrador.
 
-#### Professores
-- **Criar Professor**
-	- **URL**: `https://api-nr.vercel.app/api/admin/professores`
-	- **Método**: POST
-	- **Acesso**: Autenticado
-	- **Body**:
-		```json
-		{
-			"nome": "Fulano"
-		}
-		```
+**`GET /administradores`**  
+**Auth:** Owner  
+Lista todos os administradores.
 
-- **Listar Professores**
-	- **URL**: `https://api-nr.vercel.app/api/admin/professores`
-	- **Método**: GET
-	- **Acesso**: Autenticado
+**`GET /administradores/:id`**  
+**Auth:** Owner  
+Retorna dados de um administrador específico.
 
-- **Editar Professor**
-	- **URL**: `https://api-nr.vercel.app/api/admin/professores/:id`
-	- **Método**: PUT
-	- **Acesso**: Autenticado
-	- **Body**: Igual ao POST
+**`PUT /administradores/:id`**  
+**Auth:** Owner  
+**Body:** `{ username?, email? }`  
+Atualiza dados de um administrador.
 
-- **Excluir Professor**
-	- **URL**: `https://api-nr.vercel.app/api/admin/professores/:id`
-	- **Método**: DELETE
-	- **Acesso**: Autenticado
+**`DELETE /administradores/:id`**  
+**Auth:** Owner  
+Remove administrador (exceto Owner - id 1).
 
 ---
 
-## Interação entre Arquivos
+## Integração com Frontend
 
-- **server.js** importa e registra todas as rotas e middlewares.
-- **Rotas** usam funções de autenticação do `middlewares/authmw.js` para proteger endpoints.
-- **Rotas** acessam o banco via `lib/db.js` (pool de conexões PostgreSQL).
-- **Rotas administrativas** usam o Supabase via `lib/supabase.js` para upload/remover imagens.
-- **Variáveis de ambiente** são carregadas via dotenv em todos os arquivos que precisam delas.
+O frontend consome a API através de requisições HTTP:
+
+1. **Produtos**: Requisições GET públicas para listagem e exibição.
+2. **Autenticação**: Login retorna token que é armazenado (localStorage/sessionStorage) e enviado em requisições subsequentes.
+3. **Gerenciamento**: Interfaces administrativas enviam FormData para upload de imagens e JSON para outros dados.
+4. **Imagens**: URLs retornadas pela API apontam para Vercel Blob Storage e são usadas diretamente em elementos `<img>`.
+
+### Validações
+- Servidor valida todos os campos via `express-validator`.
+- Erros retornam status HTTP apropriado com detalhes no body.
+- Frontend exibe mensagens de erro e trata respostas de sucesso.
 
 ---
 
-## Observações Finais
+## Variáveis de Ambiente
 
-- O Supabase foi escolhido para armazenamento de imagens por ser compatível com Vercel e facilitar o acesso público via CDN.
-- O banco de dados é hospedado na neon.tech, garantindo alta disponibilidade e integração com Node.js.
-- O sistema de autenticação garante que apenas administradores autenticados (ou Owner) possam acessar rotas sensíveis.
+- `DATABASE_URL`: String de conexão PostgreSQL
+- `JWT_SECRET`: Chave secreta para assinatura de tokens
+- `OWNER_ID`: ID do administrador Owner
+- `OWNER_EMAIL`: Email do administrador Owner
+- `BLOB_READ_WRITE_TOKEN`: Token de acesso ao Vercel Blob Storage
 
 ---
