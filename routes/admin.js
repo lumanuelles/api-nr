@@ -71,12 +71,12 @@ router.post('/produtos', verificarAutenticacao, upload.array('imagens'), validat
         return res.status(400).json({ errors: errors.array() });
     }
 
-    const { nome, preco, imagensToAdd } = req.body;
+    const { nome, preco, imagensToAdd, estoque } = req.body;
 
     try {
         const imagens = [];
 
-        
+        // ...existing code...
         const files = req.files || [];
         for (const file of files) {
             const buffer = file.buffer;
@@ -87,7 +87,6 @@ router.post('/produtos', verificarAutenticacao, upload.array('imagens'), validat
             imagens.push(publicUrl);
         }
 
-        
         let b64list = imagensToAdd;
         if (typeof imagensToAdd === 'string' && imagensToAdd.trim().startsWith('[')) {
             try { b64list = JSON.parse(imagensToAdd); } catch (e) { b64list = imagensToAdd; }
@@ -102,9 +101,12 @@ router.post('/produtos', verificarAutenticacao, upload.array('imagens'), validat
             }
         }
 
+        // estoque: default 0 if not provided
+        const estoqueFinal = (estoque !== undefined && estoque !== null && estoque !== '') ? parseInt(estoque, 10) : 0;
+
         const { rows } = await pool.query(
-            'INSERT INTO produto (nome, preco, imagens) VALUES ($1, $2, $3) RETURNING *',
-            [nome, preco, imagens]
+            'INSERT INTO produto (nome, preco, imagens, estoque) VALUES ($1, $2, $3, $4) RETURNING *',
+            [nome, preco, imagens, estoqueFinal]
         );
         res.status(201).json(rows[0]);
     } catch (error) {
@@ -121,15 +123,15 @@ router.put('/produtos/:id', verificarAutenticacao, upload.array('imagens'), vali
     }
 
     const { id } = req.params;
-    const { nome, preco, imagensToAdd, imagensToRemove } = req.body;
+    const { nome, preco, imagensToAdd, imagensToRemove, estoque } = req.body;
 
     try {
-        const { rows: prodRows } = await pool.query('SELECT imagens FROM produto WHERE id = $1', [id]);
+        const { rows: prodRows } = await pool.query('SELECT imagens, estoque FROM produto WHERE id = $1', [id]);
         if (prodRows.length === 0) return res.status(404).json({ error: 'Produto não encontrado.' });
 
         let imagens = prodRows[0].imagens || [];
+        let estoqueAtual = prodRows[0].estoque;
 
-        
         let toRemove = imagensToRemove;
         if (typeof imagensToRemove === 'string' && imagensToRemove.trim().startsWith('[')) {
             try { toRemove = JSON.parse(imagensToRemove); } catch (e) { toRemove = imagensToRemove; }
@@ -144,7 +146,6 @@ router.put('/produtos/:id', verificarAutenticacao, upload.array('imagens'), vali
             }
         }
 
-        
         const files = req.files || [];
         for (const file of files) {
             const buffer = file.buffer;
@@ -155,7 +156,6 @@ router.put('/produtos/:id', verificarAutenticacao, upload.array('imagens'), vali
             imagens.push(publicUrl);
         }
 
-        
         let b64list = imagensToAdd;
         if (typeof imagensToAdd === 'string' && imagensToAdd.trim().startsWith('[')) {
             try { b64list = JSON.parse(imagensToAdd); } catch (e) { b64list = imagensToAdd; }
@@ -170,9 +170,12 @@ router.put('/produtos/:id', verificarAutenticacao, upload.array('imagens'), vali
             }
         }
 
+        // estoque: if provided, update, else keep current
+        const estoqueFinal = (estoque !== undefined && estoque !== null && estoque !== '') ? parseInt(estoque, 10) : estoqueAtual;
+
         const { rows, rowCount } = await pool.query(
-            'UPDATE produto SET nome = $1, preco = $2, imagens = $3 WHERE id = $4 RETURNING *',
-            [nome, preco, imagens, id]
+            'UPDATE produto SET nome = $1, preco = $2, imagens = $3, estoque = $4 WHERE id = $5 RETURNING *',
+            [nome, preco, imagens, estoqueFinal, id]
         );
 
         if (rowCount === 0) {

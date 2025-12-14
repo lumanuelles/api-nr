@@ -7,7 +7,7 @@ const router = Router();
 // Lista todos os produtos
 router.get('/produtos', async (req, res) => {
     try {
-        const { rows } = await pool.query('SELECT id, nome, preco, imagens FROM produto ORDER BY id');
+        const { rows } = await pool.query('SELECT id, nome, preco, imagens, estoque FROM produto ORDER BY id');
         res.json(rows);
     } catch (error) {
         console.error('Erro ao listar produtos:', error);
@@ -22,7 +22,7 @@ router.get('/produtos/:id', async (req, res) => {
         return res.status(400).json({ error: 'ID inválido.' });
     }
     try {
-        const { rows } = await pool.query('SELECT id, nome, preco, imagens FROM produto WHERE id = $1', [id]);
+        const { rows } = await pool.query('SELECT id, nome, preco, imagens, estoque FROM produto WHERE id = $1', [id]);
         if (rows.length === 0) {
             return res.status(404).json({ error: 'Produto não encontrado.' });
         }
