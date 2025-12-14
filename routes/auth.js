@@ -8,16 +8,23 @@ import { body, validationResult } from 'express-validator';
 const router = Router();
 
 const validateLogin = [
-    body('email')
-        .isEmail()
-        .withMessage('Formato de email inválido')
-        .normalizeEmail(),
+    body('username')
+        .notEmpty()
+        .withMessage('Username é obrigatório')
+        .isLength({ min: 3, max: 50 })
+        .withMessage('Username deve ter entre 3 e 50 caracteres'),
     body('senha')
         .notEmpty()
         .withMessage('Senha é obrigatória')
 ];
 
 const validateUpdateProfile = [
+    body('username')
+        .optional()
+        .isLength({ min: 3, max: 50 })
+        .withMessage('Username deve ter entre 3 e 50 caracteres')
+        .matches(/^[a-zA-Z0-9_]+$/)
+        .withMessage('Username deve conter apenas letras, números e underscore'),
     body('email')
         .optional()
         .isEmail()
@@ -28,15 +35,7 @@ const validateUpdateProfile = [
         .isLength({ min: 8 })
         .withMessage('A nova senha deve ter no mínimo 8 caracteres')
         .matches(/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/)
-        .withMessage('A senha deve conter letras maiúsculas, minúsculas, números e caracteres especiais'),
-    body('senhaAtual')
-        .if(body('email').exists())
-        .notEmpty()
-        .withMessage('Senha atual é obrigatória para alterar o email'),
-    body('senhaAtual')
-        .if(body('novaSenha').exists())
-        .notEmpty()
-        .withMessage('Senha atual é obrigatória para alterar a senha')
+        .withMessage('A senha deve conter letras maiúsculas, minúsculas, números e caracteres especiais')
 ];
 
 router.post('/login', validateLogin, async (req, res) => {
@@ -45,23 +44,23 @@ router.post('/login', validateLogin, async (req, res) => {
         return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, senha } = req.body;
+    const { username, senha } = req.body;
 
     try {
         const { rows } = await pool.query(
-            'SELECT id, email, senha_hash FROM administrador WHERE email = $1',
-            [email]
+            'SELECT id, username, email, senha_hash FROM administrador WHERE username = $1',
+            [username]
         );
 
         if (rows.length === 0) {
-            return res.status(401).json({ error: 'Email ou senha incorretos.' });
+            return res.status(401).json({ error: 'Username ou senha incorretos.' });
         }
 
         const admin = rows[0];
         const senhaValida = await bcrypt.compare(senha, admin.senha_hash);
 
         if (!senhaValida) {
-            return res.status(401).json({ error: 'Email ou senha incorretos.' });
+            return res.status(401).json({ error: 'Username ou senha incorretos.' });
         }
 
         const ownerId = process.env.OWNER_ID ? parseInt(process.env.OWNER_ID, 10) : null;
@@ -69,7 +68,7 @@ router.post('/login', validateLogin, async (req, res) => {
         const type = (ownerId === admin.id || (ownerEmail && ownerEmail === admin.email)) ? 'Owner' : 'admin';
 
         const token = jwt.sign(
-            { id: admin.id, email: admin.email, userType: type },
+            { id: admin.id, username: admin.username, email: admin.email, userType: type },
             process.env.JWT_SECRET,
             { expiresIn: '24h' }
         );
@@ -84,7 +83,7 @@ router.post('/login', validateLogin, async (req, res) => {
 router.get('/perfil', verificarAutenticacao, async (req, res) => {
     try {
         const { rows } = await pool.query(
-            'SELECT id, email FROM administrador WHERE id = $1',
+            'SELECT id, username, email FROM administrador WHERE id = $1',
             [req.userId]
         );
 
@@ -105,18 +104,18 @@ router.put('/perfil', verificarAutenticacao, validateUpdateProfile, async (req, 
         return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, novaSenha, senhaAtual } = req.body;
+    const { username, email, novaSenha, senhaAtual } = req.body;
 
     try {
-        if ((email || novaSenha) && !senhaAtual) {
+        if ((username || email || novaSenha) && !senhaAtual) {
             return res.status(400).json({ 
-                error: 'Senha atual é obrigatória para alterar email ou senha.' 
+                error: 'Senha atual é obrigatória para alterar username, email ou senha.' 
             });
         }
 
         
         const { rows: adminRows } = await pool.query(
-            'SELECT email, senha_hash FROM administrador WHERE id = $1',
+            'SELECT username, email, senha_hash FROM administrador WHERE id = $1',
             [req.userId]
         );
 
@@ -133,6 +132,17 @@ router.put('/perfil', verificarAutenticacao, validateUpdateProfile, async (req, 
             }
         }
 
+        if (username && username !== adminAtual.username) {
+            const { rows: existingUsername } = await pool.query(
+                'SELECT id FROM administrador WHERE username = $1 AND id != $2',
+                [username, req.userId]
+            );
+
+            if (existingUsername.length > 0) {
+                return res.status(400).json({ error: 'Username já está em uso.' });
+            }
+        }
+
         if (email && email !== adminAtual.email) {
             const { rows: existing } = await pool.query(
                 'SELECT id FROM administrador WHERE email = $1 AND id != $2',
@@ -144,23 +154,24 @@ router.put('/perfil', verificarAutenticacao, validateUpdateProfile, async (req, 
             }
         }
 
+        const usernameFinal = username || adminAtual.username;
         const emailFinal = email || adminAtual.email;
         const senhaFinal = novaSenha ? await bcrypt.hash(novaSenha, 10) : adminAtual.senha_hash;
 
         
         const { rows } = await pool.query(
-            'UPDATE administrador SET email = $1, senha_hash = $2 WHERE id = $3 RETURNING id, email',
-            [emailFinal, senhaFinal, req.userId]
+            'UPDATE administrador SET username = $1, email = $2, senha_hash = $3 WHERE id = $4 RETURNING id, username, email',
+            [usernameFinal, emailFinal, senhaFinal, req.userId]
         );
 
         let newToken = null;
-        if (email && email !== adminAtual.email) {
+        if ((username && username !== adminAtual.username) || (email && email !== adminAtual.email)) {
             const ownerId = process.env.OWNER_ID ? parseInt(process.env.OWNER_ID, 10) : null;
             const ownerEmail = process.env.OWNER_EMAIL || null;
             const type = (ownerId === rows[0].id || (ownerEmail && ownerEmail === rows[0].email)) ? 'Owner' : 'admin';
 
             newToken = jwt.sign(
-                { id: rows[0].id, email: rows[0].email, userType: type },
+                { id: rows[0].id, username: rows[0].username, email: rows[0].email, userType: type },
                 process.env.JWT_SECRET,
                 { expiresIn: '24h' }
             );

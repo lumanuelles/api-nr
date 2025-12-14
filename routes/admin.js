@@ -3,12 +3,10 @@ import verificarAutenticacao, { verificarAcessoOwner } from "../middlewares/auth
 import pool from '../lib/db.js';
 import bcrypt from 'bcrypt';
 import { body, param, validationResult } from 'express-validator';
-import { uploadImageBuffer, removeImage, extractPathFromPublicUrl } from '../lib/supabase.js';
+import { uploadImageBuffer, removeImage, extractPathFromPublicUrl } from '../lib/blob.js';
 import multer from 'multer';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
-
-const PRODUTO_BUCKET = process.env.SUPABASE_PRODUTO_BUCKET || 'produtos';
 
 const router = Router();
 
@@ -25,18 +23,7 @@ const validateProduto = [
         .withMessage('Preço deve ser um número positivo')
 ];
 
-const validateInstrumento = [
-    body('nome')
-        .notEmpty()
-        .withMessage('Nome é obrigatório')
-        .isLength({ min: 3, max: 100 })
-        .withMessage('Nome deve ter entre 3 e 100 caracteres'),
-    body('descricao')
-        .notEmpty()
-        .withMessage('Descrição é obrigatória')
-        .isLength({ min: 10, max: 500 })
-        .withMessage('Descrição deve ter entre 10 e 500 caracteres')
-];
+
 
 const validateId = [
     param('id')
@@ -45,6 +32,13 @@ const validateId = [
 ];
 
 const validateRegister = [
+    body('username')
+        .notEmpty()
+        .withMessage('Username é obrigatório')
+        .isLength({ min: 3, max: 50 })
+        .withMessage('Username deve ter entre 3 e 50 caracteres')
+        .matches(/^[a-zA-Z0-9_]+$/)
+        .withMessage('Username deve conter apenas letras, números e underscore'),
     body('email')
         .isEmail()
         .withMessage('Formato de email inválido')
@@ -56,22 +50,21 @@ const validateRegister = [
         .withMessage('A senha deve conter letras maiúsculas, minúsculas, números e caracteres especiais')
 ];
 
-const validateAdminEmail = [
+const validateAdminUpdate = [
+    body('username')
+        .optional()
+        .isLength({ min: 3, max: 50 })
+        .withMessage('Username deve ter entre 3 e 50 caracteres')
+        .matches(/^[a-zA-Z0-9_]+$/)
+        .withMessage('Username deve conter apenas letras, números e underscore'),
     body('email')
+        .optional()
         .isEmail()
         .withMessage('Formato de email inválido')
         .normalizeEmail(),
 ];
 
-const validateProfessor = [
-    body('nome')
-        .notEmpty()
-        .withMessage('Nome é obrigatório')
-        .isLength({ min: 2, max: 100 })
-        .withMessage('Nome deve ter entre 2 e 100 caracteres')
-];
 
- 
 router.post('/produtos', verificarAutenticacao, upload.array('imagens'), validateProduto, async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -90,7 +83,7 @@ router.post('/produtos', verificarAutenticacao, upload.array('imagens'), validat
             const mime = file.mimetype || 'image/jpeg';
             const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
             const filename = `produtos/${Date.now()}_${Math.random().toString(36).slice(2,10)}.${ext}`;
-            const publicUrl = await uploadImageBuffer(PRODUTO_BUCKET, filename, buffer, mime);
+            const publicUrl = await uploadImageBuffer(null, filename, buffer, mime);
             imagens.push(publicUrl);
         }
 
@@ -104,7 +97,7 @@ router.post('/produtos', verificarAutenticacao, upload.array('imagens'), validat
                 if (!b64) continue;
                 const buffer = Buffer.from(b64, 'base64');
                 const filename = `produtos/${Date.now()}_${Math.random().toString(36).slice(2,10)}.jpg`;
-                const publicUrl = await uploadImageBuffer(PRODUTO_BUCKET, filename, buffer, 'image/jpeg');
+                const publicUrl = await uploadImageBuffer(null, filename, buffer, 'image/jpeg');
                 imagens.push(publicUrl);
             }
         }
@@ -143,9 +136,9 @@ router.put('/produtos/:id', verificarAutenticacao, upload.array('imagens'), vali
         }
         if (Array.isArray(toRemove) && toRemove.length > 0) {
             for (const url of toRemove) {
-                const path = extractPathFromPublicUrl(url, PRODUTO_BUCKET);
+                const path = extractPathFromPublicUrl(url, null);
                 if (path) {
-                    try { await removeImage(PRODUTO_BUCKET, path); } catch (e) { console.warn('Falha ao remover imagem do storage', e.message); }
+                    try { await removeImage(null, path); } catch (e) { console.warn('Falha ao remover imagem do storage', e.message); }
                 }
                 imagens = imagens.filter(i => i !== url);
             }
@@ -158,7 +151,7 @@ router.put('/produtos/:id', verificarAutenticacao, upload.array('imagens'), vali
             const mime = file.mimetype || 'image/jpeg';
             const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
             const filename = `produtos/${Date.now()}_${Math.random().toString(36).slice(2,10)}.${ext}`;
-            const publicUrl = await uploadImageBuffer(PRODUTO_BUCKET, filename, buffer, mime);
+            const publicUrl = await uploadImageBuffer(null, filename, buffer, mime);
             imagens.push(publicUrl);
         }
 
@@ -172,7 +165,7 @@ router.put('/produtos/:id', verificarAutenticacao, upload.array('imagens'), vali
                 if (!b64) continue;
                 const buffer = Buffer.from(b64, 'base64');
                 const filename = `produtos/${Date.now()}_${Math.random().toString(36).slice(2,10)}.jpg`;
-                const publicUrl = await uploadImageBuffer(PRODUTO_BUCKET, filename, buffer, 'image/jpeg');
+                const publicUrl = await uploadImageBuffer(null, filename, buffer, 'image/jpeg');
                 imagens.push(publicUrl);
             }
         }
@@ -202,9 +195,9 @@ router.delete('/produtos/:id', verificarAutenticacao, async (req, res) => {
 
         const imagens = rows[0].imagens || [];
         for (const url of imagens) {
-            const path = extractPathFromPublicUrl(url, PRODUTO_BUCKET);
+            const path = extractPathFromPublicUrl(url, null);
             if (path) {
-                try { await removeImage(PRODUTO_BUCKET, path); } catch (e) { console.warn('Falha ao remover imagem do storage', e.message); }
+                try { await removeImage(null, path); } catch (e) { console.warn('Falha ao remover imagem do storage', e.message); }
             }
         }
 
@@ -218,162 +211,19 @@ router.delete('/produtos/:id', verificarAutenticacao, async (req, res) => {
     }
 });
 
- 
-
-router.post('/instrumentos', verificarAutenticacao, validateInstrumento, async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { nome, descricao } = req.body;
-
-    try {
-        const { rows } = await pool.query(
-            'INSERT INTO instrumento (nome, descricao) VALUES ($1, $2) RETURNING *',
-            [nome, descricao]
-        );
-        res.status(201).json(rows[0]);
-    } catch (error) {
-        console.error('Erro ao criar instrumento:', error);
-        res.status(500).json({ error: 'Erro ao criar instrumento.' });
-    }
-});
-
-router.put('/instrumentos/:id', verificarAutenticacao, validateId, validateInstrumento, async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { id } = req.params;
-    const { nome, descricao } = req.body;
-
-    try {
-        const { rows, rowCount } = await pool.query(
-            'UPDATE instrumento SET nome = $1, descricao = $2 WHERE id = $3 RETURNING *',
-            [nome, descricao, id]
-        );
-
-        if (rowCount === 0) {
-            return res.status(404).json({ error: 'Instrumento não encontrado.' });
-        }
-
-        res.json(rows[0]);
-    } catch (error) {
-        console.error('Erro ao atualizar instrumento:', error);
-        res.status(500).json({ error: 'Erro ao atualizar instrumento.' });
-    }
-});
-
-router.delete('/instrumentos/:id', verificarAutenticacao, async (req, res) => {
-    const { id } = req.params;
-
-    try {
-        const { rowCount } = await pool.query('DELETE FROM instrumento WHERE id = $1', [id]);
-
-        if (rowCount === 0) {
-            return res.status(404).json({ error: 'Instrumento não encontrado.' });
-        }
-
-        res.json({ message: 'Instrumento deletado com sucesso.' });
-    } catch (error) {
-        console.error('Erro ao deletar instrumento:', error);
-        res.status(500).json({ error: 'Erro ao deletar instrumento.' });
-    }
-});
-
- 
-
-router.post('/professores', verificarAutenticacao, validateProfessor, async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-    const { nome } = req.body;
-    try {
-        const { rows } = await pool.query('INSERT INTO professor (nome) VALUES ($1) RETURNING *', [nome]);
-        res.status(201).json(rows[0]);
-    } catch (error) {
-        console.error('Erro ao criar professor:', error);
-        res.status(500).json({ error: 'Erro ao criar professor.' });
-    }
-});
-
-router.get('/professores', verificarAutenticacao, async (req, res) => {
-    try {
-        const { rows } = await pool.query('SELECT id, nome FROM professor ORDER BY id');
-        res.json(rows);
-    } catch (error) {
-        console.error('Erro ao listar professores:', error);
-        res.status(500).json({ error: 'Erro ao buscar professores.' });
-    }
-});
-
-router.put('/professores/:id', verificarAutenticacao, validateId, validateProfessor, async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-    const { id } = req.params;
-    const { nome } = req.body;
-    try {
-        const { rows } = await pool.query('UPDATE professor SET nome = $1 WHERE id = $2 RETURNING *', [nome, id]);
-        if (rows.length === 0) return res.status(404).json({ error: 'Professor não encontrado.' });
-        res.json(rows[0]);
-    } catch (error) {
-        console.error('Erro ao atualizar professor:', error);
-        res.status(500).json({ error: 'Erro ao atualizar professor.' });
-    }
-});
-
-router.delete('/professores/:id', verificarAutenticacao, validateId, async (req, res) => {
-    const { id } = req.params;
-    try {
-        const { rowCount } = await pool.query('DELETE FROM professor WHERE id = $1', [id]);
-        if (rowCount === 0) return res.status(404).json({ error: 'Professor não encontrado.' });
-        res.json({ message: 'Professor deletado com sucesso.' });
-    } catch (error) {
-        console.error('Erro ao deletar professor:', error);
-        res.status(500).json({ error: 'Erro ao deletar professor.' });
-    }
-});
-
-router.post('/professores/:id/instrumentos', verificarAutenticacao, validateId, body('instrumento_id').isInt({ min: 1 }), async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-    const { id } = req.params;
-    const { instrumento_id } = req.body;
-    try {
-        await pool.query('INSERT INTO professor_instrumento (professor_id, instrumento_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, instrumento_id]);
-        res.json({ message: 'Instrumento associado ao professor.' });
-    } catch (error) {
-        console.error('Erro ao associar instrumento:', error);
-        res.status(500).json({ error: 'Erro ao associar instrumento.' });
-    }
-});
-
-router.delete('/professores/:id/instrumentos/:instrumentoId', verificarAutenticacao, validateId, async (req, res) => {
-    const { id, instrumentoId } = req.params;
-    try {
-        const { rowCount } = await pool.query('DELETE FROM professor_instrumento WHERE professor_id = $1 AND instrumento_id = $2', [id, instrumentoId]);
-        if (rowCount === 0) return res.status(404).json({ error: 'Associação não encontrada.' });
-        res.json({ message: 'Associação removida.' });
-    } catch (error) {
-        console.error('Erro ao remover associação:', error);
-        res.status(500).json({ error: 'Erro ao remover associação.' });
-    }
-});
-
- 
-
 router.post('/administradores', verificarAcessoOwner, validateRegister, async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
     }
-    const { email, senha } = req.body;
+    const { username, email, senha } = req.body;
 
     try {
+        const { rows: existingUsername } = await pool.query('SELECT id FROM administrador WHERE username = $1', [username]);
+        if (existingUsername.length > 0) {
+            return res.status(400).json({ error: 'Username já cadastrado.' });
+        }
+
         const { rows: existing } = await pool.query('SELECT id FROM administrador WHERE email = $1', [email]);
         if (existing.length > 0) {
             return res.status(400).json({ error: 'Email já cadastrado.' });
@@ -382,8 +232,8 @@ router.post('/administradores', verificarAcessoOwner, validateRegister, async (r
         const senhaHash = await bcrypt.hash(senha, 10);
 
         const { rows } = await pool.query(
-            'INSERT INTO administrador (email, senha_hash) VALUES ($1, $2) RETURNING id, email',
-            [email, senhaHash]
+            'INSERT INTO administrador (username, email, senha_hash) VALUES ($1, $2, $3) RETURNING id, username, email',
+            [username, email, senhaHash]
         );
 
         res.status(201).json({ message: 'Administrador criado com sucesso.', admin: rows[0] });
@@ -395,7 +245,7 @@ router.post('/administradores', verificarAcessoOwner, validateRegister, async (r
 
 router.get('/administradores', verificarAcessoOwner, async (req, res) => {
     try {
-        const { rows } = await pool.query('SELECT id, email FROM administrador ORDER BY id');
+        const { rows } = await pool.query('SELECT id, username, email FROM administrador ORDER BY id');
         res.json(rows);
     } catch (error) {
         console.error('Erro ao listar administradores:', error);
@@ -413,7 +263,7 @@ router.get('/administradores/:id', verificarAcessoOwner, validateId, async (req,
 
     try {
         const { rows } = await pool.query(
-            'SELECT id, email FROM administrador WHERE id = $1',
+            'SELECT id, username, email FROM administrador WHERE id = $1',
             [id]
         );
 
@@ -428,22 +278,45 @@ router.get('/administradores/:id', verificarAcessoOwner, validateId, async (req,
     }
 });
 
-router.put('/administradores/:id', verificarAcessoOwner, validateId, validateAdminEmail, async (req, res) => {
+router.put('/administradores/:id', verificarAcessoOwner, validateId, validateAdminUpdate, async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
     }
 
     const { id } = req.params;
-    const { email } = req.body;
+    const { username, email } = req.body;
 
     try {
-        const { rows: existing } = await pool.query('SELECT id FROM administrador WHERE email = $1 AND id != $2', [email, id]);
-        if (existing.length > 0) return res.status(400).json({ error: 'Email já está em uso.' });
+        if (!username && !email) {
+            return res.status(400).json({ error: 'Pelo menos username ou email deve ser fornecido.' });
+        }
+
+        const { rows: currentAdmin } = await pool.query('SELECT username, email FROM administrador WHERE id = $1', [id]);
+        if (currentAdmin.length === 0) {
+            return res.status(404).json({ error: 'Administrador não encontrado.' });
+        }
+
+        const usernameFinal = username || currentAdmin[0].username;
+        const emailFinal = email || currentAdmin[0].email;
+
+        if (username && username !== currentAdmin[0].username) {
+            const { rows: existingUsername } = await pool.query('SELECT id FROM administrador WHERE username = $1 AND id != $2', [username, id]);
+            if (existingUsername.length > 0) {
+                return res.status(400).json({ error: 'Username já está em uso.' });
+            }
+        }
+
+        if (email && email !== currentAdmin[0].email) {
+            const { rows: existing } = await pool.query('SELECT id FROM administrador WHERE email = $1 AND id != $2', [email, id]);
+            if (existing.length > 0) {
+                return res.status(400).json({ error: 'Email já está em uso.' });
+            }
+        }
 
         const { rows } = await pool.query(
-            'UPDATE administrador SET email = $1 WHERE id = $2 RETURNING id, email',
-            [email, id]
+            'UPDATE administrador SET username = $1, email = $2 WHERE id = $3 RETURNING id, username, email',
+            [usernameFinal, emailFinal, id]
         );
 
         if (rows.length === 0) {

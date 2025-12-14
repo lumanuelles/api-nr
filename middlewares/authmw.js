@@ -11,6 +11,7 @@ function verificarAutenticacao(req, res, next) {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         
         req.userId = decoded.id;
+        req.username = decoded.username;
         req.userEmail = decoded.email;
         req.userType = decoded.userType || null;
         req.usertype = req.userType;
