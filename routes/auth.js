@@ -32,10 +32,8 @@ const validateUpdateProfile = [
         .normalizeEmail(),
     body('novaSenha')
         .optional()
-        .isLength({ min: 8 })
-        .withMessage('A nova senha deve ter no mínimo 8 caracteres')
-        .matches(/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/)
-        .withMessage('A senha deve conter letras maiúsculas, minúsculas, números e caracteres especiais')
+        .isLength({ min: 6, max: 50 })
+        .withMessage('A nova senha deve ter entre 6 e 50 caracteres')
 ];
 
 router.post('/login', validateLogin, async (req, res) => {
