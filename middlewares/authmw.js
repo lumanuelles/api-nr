@@ -41,19 +41,14 @@ function verificarAcessoOwner(req, res, next) {
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        
-        const ownerId = process.env.OWNER_ID ? parseInt(process.env.OWNER_ID, 10) : 1;
-        const ownerEmail = process.env.OWNER_EMAIL || 'nubiarocha@gmail.com';
-
-        if (decoded.id !== ownerId || decoded.email !== ownerEmail) {
+        // Owner fixo: id === 1
+        if (decoded.id !== 1) {
             return res.status(403).json({ error: "Acesso negado. Apenas o Owner pode acessar este recurso." });
         }
-
         req.userId = decoded.id;
         req.userEmail = decoded.email;
         req.userType = 'Owner';
         req.usertype = 'Owner';
-        
         next();
     } catch (error) {
         console.error("Erro na verificação do token:", error.message);
