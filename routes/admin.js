@@ -34,11 +34,11 @@ const validateId = [
 const validateRegister = [
     body('username')
         .notEmpty()
-        .withMessage('Username é obrigatório')
+        .withMessage('Usuário é obrigatório')
         .isLength({ min: 3, max: 50 })
-        .withMessage('Username deve ter entre 3 e 50 caracteres')
-        .matches(/^[a-zA-Z0-9_]+$/)
-        .withMessage('Username deve conter apenas letras, números e underscore'),
+        .withMessage('Usuário deve ter entre 3 e 50 caracteres')
+        .matches(/^[a-zA-Z0-9_.]+$/)
+        .withMessage('Usuário deve conter apenas letras, números, underscore e ponto'),
     body('email')
         .isEmail()
         .withMessage('Formato de email inválido')
@@ -52,9 +52,9 @@ const validateAdminUpdate = [
     body('username')
         .optional()
         .isLength({ min: 3, max: 50 })
-        .withMessage('Username deve ter entre 3 e 50 caracteres')
-        .matches(/^[a-zA-Z0-9_]+$/)
-        .withMessage('Username deve conter apenas letras, números e underscore'),
+        .withMessage('Usuário deve ter entre 3 e 50 caracteres')
+        .matches(/^[a-zA-Z0-9_.]+$/)
+        .withMessage('Usuário deve conter apenas letras, números, underscore e ponto'),
     body('email')
         .optional()
         .isEmail()
@@ -221,7 +221,7 @@ router.post('/administradores', verificarAcessoOwner, validateRegister, async (r
     try {
         const { rows: existingUsername } = await pool.query('SELECT id FROM administrador WHERE username = $1', [username]);
         if (existingUsername.length > 0) {
-            return res.status(400).json({ error: 'Username já cadastrado.' });
+            return res.status(400).json({ error: 'Usuário já cadastrado.' });
         }
 
         const { rows: existing } = await pool.query('SELECT id FROM administrador WHERE email = $1', [email]);
@@ -303,7 +303,7 @@ router.put('/administradores/:id', verificarAcessoOwner, validateId, validateAdm
         if (username && username !== currentAdmin[0].username) {
             const { rows: existingUsername } = await pool.query('SELECT id FROM administrador WHERE username = $1 AND id != $2', [username, id]);
             if (existingUsername.length > 0) {
-                return res.status(400).json({ error: 'Username já está em uso.' });
+                return res.status(400).json({ error: 'Usuário já está em uso.' });
             }
         }
 

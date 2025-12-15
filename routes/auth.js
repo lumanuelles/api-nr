@@ -10,9 +10,9 @@ const router = Router();
 const validateLogin = [
     body('username')
         .notEmpty()
-        .withMessage('Username é obrigatório')
+        .withMessage('Usuário é obrigatório')
         .isLength({ min: 3, max: 50 })
-        .withMessage('Username deve ter entre 3 e 50 caracteres'),
+        .withMessage('Usuário deve ter entre 3 e 50 caracteres'),
     body('senha')
         .notEmpty()
         .withMessage('Senha é obrigatória')
@@ -22,9 +22,9 @@ const validateUpdateProfile = [
     body('username')
         .optional()
         .isLength({ min: 3, max: 50 })
-        .withMessage('Username deve ter entre 3 e 50 caracteres')
-        .matches(/^[a-zA-Z0-9_]+$/)
-        .withMessage('Username deve conter apenas letras, números e underscore'),
+        .withMessage('Usuário deve ter entre 3 e 50 caracteres')
+        .matches(/^[a-zA-Z0-9_.]+$/)
+        .withMessage('Usuário deve conter apenas letras, números, underscore e ponto'),
     body('email')
         .optional()
         .isEmail()
@@ -53,14 +53,14 @@ router.post('/login', validateLogin, async (req, res) => {
         );
 
         if (rows.length === 0) {
-            return res.status(401).json({ error: 'Username ou senha incorretos.' });
+            return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
         }
 
         const admin = rows[0];
         const senhaValida = await bcrypt.compare(senha, admin.senha_hash);
 
         if (!senhaValida) {
-            return res.status(401).json({ error: 'Username ou senha incorretos.' });
+            return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
         }
 
         const ownerId = process.env.OWNER_ID ? parseInt(process.env.OWNER_ID, 10) : null;
@@ -139,7 +139,7 @@ router.put('/perfil', verificarAutenticacao, validateUpdateProfile, async (req, 
             );
 
             if (existingUsername.length > 0) {
-                return res.status(400).json({ error: 'Username já está em uso.' });
+                return res.status(400).json({ error: 'Usuário já está em uso.' });
             }
         }
 
